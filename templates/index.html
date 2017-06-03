@@ -1,0 +1,26 @@
+<!DOCTYPE HTML>
+<html>
+  <head>
+    <meta charset="UTF-8">
+    <title>SQL Optitree</title>
+    <link rel="stylesheet" href="/static/css/bootstrap.min.css">
+    <script src="/static/js/bootstrap.min.js"></script>
+  </head>
+  <body>
+    <div class="container">
+      <h2>Insert a SQL Query</h2>
+      <form action="/optimize" method="POST">
+        <div class="row">
+          <div class="col-xs-12">
+            <div class="form-group">
+              <textarea name="sql" class="form-control" rows="15">
+                SELECT id, name FROM employees WHERE name = 'John Doe';
+              </textarea>
+            </div>
+          </div>
+        </div>
+        <button type="submit" class="btn btn-primary pull-right">Optimize!</button>
+      </form>
+    </div>
+  </body>
+</html>
