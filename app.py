@@ -17,3 +17,6 @@ def optimize():
         return render_template('error.html', error=error)
 
     return render_template('results.html', steps=sql.optimize())
+
+if __name__ == '__main__':
+    app.run(port=5000, debug=True)
