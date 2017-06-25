@@ -22,7 +22,8 @@
           <ul>
             <li>If you do any type of product (like join), you MUST use alias!</li>
             <li>You can't have nested or multiple statements</li>
-            <li>The WHERE clause only accepts basic operations, like (=, !=, &gt;, &lt;, &gt;=, &lt;=, AND, OR, NOT)</li>
+            <li>The WHERE clause only accepts basic operations, like (=, !=, &gt;, &lt;, &gt;=, &lt;=, AND, OR)</li>
+            <li>Not even parenthesis are allowed on WHERE clause!</li>
           </ul>
         </div>
       </div>
@@ -30,7 +31,7 @@
         <div class="row">
           <div class="col-xs-12">
             <div class="form-group">
-              <textarea name="sql" class="form-control" rows="15">SELECT id, name FROM employees WHERE name = 'John Doe';</textarea>
+              <textarea name="sql" class="form-control" rows="15">SELECT id, name FROM employees WHERE name = 'John Doe'</textarea>
             </div>
           </div>
         </div>

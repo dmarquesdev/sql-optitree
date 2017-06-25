@@ -115,12 +115,25 @@ class SQLQuery(object):
         if any(alias not in alias_list for alias in found_alias):
             return False
 
-        # TODO tratar WHERE
+        # WHERE clause check
+        where_valid_keywords = ['AND', 'OR']
+        if where_token:
+            token = (0, where_token.token_first())
+        else:
+            token = (None, None)
+
+        while token[1]:
+            token = where_token.token_next(token[0])
+            if token[1]:
+                if not isinstance(token[1], sqlparse.sql.Comparison) and not token[1].is_keyword:
+                    return False
+                elif token[1].is_keyword and token[1].normalized not in where_valid_keywords:
+                    return False
 
         return True
 
     def optimize(self):
-        stmt = self.parser[0].tokens
+        stmt = self.parser[0].tokens[-1].tokens
         #self.tree = SQLTreeNode.from_query(self.parser[0])
         return stmt
 
