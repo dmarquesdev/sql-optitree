@@ -23,28 +23,31 @@ class SQLTreeNode(object):
         g.write_png('output/' + name + '.png')
 
     @staticmethod
-    def __to_pydot(pydot_root, node):
-        pydot_node = pydot.Node(SQLTreeNode.__get_label(node), shape=SQLTreeNode.__get_shape(node))
+    def __to_pydot(pydot_root, node, count=0):
+        pydot_node = pydot.Node(SQLTreeNode.__get_label(node, count), shape=SQLTreeNode.__get_shape(node))
+        count = count + 1
         pydot_root.add_node(pydot_node)
 
         for child in node.children:
-            pydot_child = pydot.Node(SQLTreeNode.__get_label(child), shape=SQLTreeNode.__get_shape(child))
+            pydot_child = pydot.Node(SQLTreeNode.__get_label(child, count), shape=SQLTreeNode.__get_shape(child))
             edge = pydot.Edge(pydot_node, pydot_child)
             pydot_root.add_edge(edge)
-            SQLTreeNode.__to_pydot(pydot_root, child)
+            SQLTreeNode.__to_pydot(pydot_root, child, count)
 
     @staticmethod
-    def __get_label(node):
+    def __get_label(node, count):
+        value = str(node.value) if node.value else ''
+
         if node.category == PROJECTION:
-            return '\u03C0 ' + str(node.value)
+            return '\u03C0 ' + value
         elif node.category == SELECTION:
-            return '\u03C3 ' + str(node.value)
+            return '\u03C3 ' + value
         elif node.category == PRODUCT:
-            return '\u2A2F ' + str(node.value)
+            return '\u2A2F ' + str(count) + ' ' + value
         elif node.category == PRODUCT_JOIN:
-            return '\u2A1D ' + str(node.value)
+            return '\u2A1D ' + str(count) + ' ' + value
         else:
-            return str(node.value)
+            return node.value.get_alias() if node.value.has_alias() else value
 
     @staticmethod
     def __get_shape(node):
@@ -93,8 +96,8 @@ class SQLTreeNode(object):
         from_table = query.token_next(4)
         # Case 1: Regular Product
         if isinstance(from_table[1], sqlparse.sql.IdentifierList):
-            relation_a = SQLTreeNode(ENTITY, from_table[1].get_identifiers()[0])
-            for identifier in from_table[1].get_identifiers()[1:]:
+            relation_a = SQLTreeNode(ENTITY, list(from_table[1].get_identifiers())[0])
+            for identifier in list(from_table[1].get_identifiers())[1:]:
                 relation_b = SQLTreeNode(ENTITY, identifier)
                 product = SQLTreeNode(PRODUCT)
                 product.add_children([relation_a, relation_b])
