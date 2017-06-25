@@ -8,7 +8,24 @@
   </head>
   <body>
     <div class="container">
+      {% if error %}
+      <div class="alert alert-danger">
+        {{ error }}
+      </div>
+      {% endif %}
       <h2>Insert a SQL Query</h2>
+      <p>This app works with a very restrict subset of the SQL Language. The following syntax is valid:</p>
+      <div class="panel">
+        <div class="panel-body">
+          <p>SELECT ... FROM ... (JOIN ... (ON ...)?)* (WHERE ...)*</p>
+          <p>The following rules are applied:</p>
+          <ul>
+            <li>If you do any type of product (like join), you MUST use alias!</li>
+            <li>You can't have nested or multiple statements</li>
+            <li>The WHERE clause only accepts basic operations, like (=, !=, &gt;, &lt;, &gt;=, &lt;=, AND, OR, NOT)</li>
+          </ul>
+        </div>
+      </div>
       <form action="/optimize" method="POST">
         <div class="row">
           <div class="col-xs-12">

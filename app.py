@@ -14,9 +14,6 @@ def optimize():
     sql = SQLQuery(request.form['sql'])
     if not sql.is_valid():
         error = 'Your SQL Query syntax is invalid!'
-        return render_template('error.html', error=error)
+        return render_template('index.html', error=error)
 
     return render_template('results.html', steps=sql.optimize())
-
-if __name__ == '__main__':
-    app.run(port=5000, debug=True)

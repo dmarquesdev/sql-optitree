@@ -1,3 +1,3 @@
 #!/bin/bash
-source .venv/bin/activate
-python app.py
+export FLASK_APP=app.py
+.venv/bin/flask run
