@@ -5,32 +5,125 @@ PROJECTION = 'projection'
 SELECTION = 'selection'
 ENTITY = 'entity'
 PRODUCT = 'product'
+PRODUCT_JOIN = 'product_join'
 
-VALID_KEYWORDS = ['SELECT', 'FROM', 'WHERE', 'ON', 'JOIN']
-
+VALID_KEYWORDS = ['SELECT', 'FROM', 'WHERE', 'JOIN']
 
 class SQLTreeNode(object):
-    def __init__(self, category, value, parent=None, children=None):
+    def __init__(self, category, value=None):
         self.category = category
         self.value = value
-        self.parent = parent
-        self.children = children
+        self.parent = None
+        self.children = []
 
-    def plot(self):
-        pass
+    def plot(self, name):
+        g = pydot.Dot(graph_type='graph')
 
-    def add_node_before(self, node):
-        pass
+        SQLTreeNode.__to_pydot(g, self.get_root())
+        g.write_png('output/' + name + '.png')
 
+    @staticmethod
+    def __to_pydot(pydot_root, node):
+        pydot_node = pydot.Node(SQLTreeNode.__get_label(node), shape=SQLTreeNode.__get_shape(node))
+        pydot_root.add_node(pydot_node)
+
+        for child in node.children:
+            pydot_child = pydot.Node(SQLTreeNode.__get_label(child), shape=SQLTreeNode.__get_shape(child))
+            edge = pydot.Edge(pydot_node, pydot_child)
+            pydot_root.add_edge(edge)
+            SQLTreeNode.__to_pydot(pydot_root, child)
+
+    @staticmethod
+    def __get_label(node):
+        if node.category == PROJECTION:
+            return '\u03C0 ' + str(node.value)
+        elif node.category == SELECTION:
+            return '\u03C3 ' + str(node.value)
+        elif node.category == PRODUCT:
+            return '\u2A2F ' + str(node.value)
+        elif node.category == PRODUCT_JOIN:
+            return '\u2A1D ' + str(node.value)
+        else:
+            return str(node.value)
+
+    @staticmethod
+    def __get_shape(node):
+        if node.category == ENTITY:
+            return 'circle'
+        else:
+            return 'none'
+
+    def get_root(self):
+        node = self
+        while node.parent != None:
+            node = node.parent
+
+        return node
+    
     def add_child(self, node):
-        pass
+        if node.parent != None:
+            node.parent.remove_child(node)
+
+        node.parent = self
+
+        self.children.append(node)
+
+    def add_children(self, nodes):
+        for node in nodes:
+            self.add_child(node)
 
     def remove_child(self, node):
-        pass
+        self.children.remove(node)
 
     @staticmethod
     def from_query(query):
-        return
+        root = SQLTreeNode(PROJECTION, query.tokens[2])
+        where = SQLTreeNode(SELECTION, query.tokens[-1])
+
+        tables = SQLTreeNode.__parse_products(query)
+
+        root.add_child(where)
+        where.add_child(tables)
+
+        return root
+
+    @staticmethod
+    def __parse_products(query):
+        # Token 4 is FROM Keyword
+        from_table = query.token_next(4)
+        # Case 1: Regular Product
+        if isinstance(from_table[1], sqlparse.sql.IdentifierList):
+            relation_a = SQLTreeNode(ENTITY, from_table[1].get_identifiers()[0])
+            for identifier in from_table[1].get_identifiers()[1:]:
+                relation_b = SQLTreeNode(ENTITY, identifier)
+                product = SQLTreeNode(PRODUCT)
+                product.add_children([relation_a, relation_b])
+
+                relation_a = product
+            
+            return relation_a
+        else:
+            next_token = query.token_next(from_table[0])
+
+            # Case 2: Join
+            if next_token[1].is_keyword and next_token[1].normalized == 'JOIN':
+                join_token = next_token
+
+                relation_a = SQLTreeNode(ENTITY, query.token_next(join_token[0])[1])
+                join_token = query.token_next(join_token[0] + 2)
+                while join_token[1]:
+                    relation_b = SQLTreeNode(ENTITY, query.token_next(join_token[0])[1])
+                    join = SQLTreeNode(PRODUCT_JOIN)
+                    join.add_children([relation_a, relation_b])
+
+                    relation_a = join
+
+                    join_token = query.token_next(join_token[0] + 2)
+                
+                return relation_a
+            else:
+                # Case 3: No product
+                return SQLTreeNode(ENTITY, from_table[1])
 
 class SQLQuery(object):
     def __init__(self, query):
@@ -42,7 +135,7 @@ class SQLQuery(object):
         # Look for single statement
         if len(self.parser) != 1:
             return False
-        # Validate scope keywords (SELECT, FROM, WHERE, JOIN, ON)
+        # Validate scope keywords (SELECT, FROM, WHERE, JOIN)
         keywords = []
         from_info = None
         join_idx = []
@@ -103,8 +196,6 @@ class SQLQuery(object):
         if where_token:
             where_identifiers = list(filter(identifier_filter, where_token.tokens))
 
-        # TODO tratar ON dos joins
-
         identifiers = select_identifiers + where_identifiers
 
         found_alias = list(map(lambda ident: ident.tokens[0].normalized, identifiers))
@@ -133,52 +224,7 @@ class SQLQuery(object):
         return True
 
     def optimize(self):
-        stmt = self.parser[0].tokens[-1].tokens
-        #self.tree = SQLTreeNode.from_query(self.parser[0])
+        stmt = self.parser[0].tokens
+        self.tree = SQLTreeNode.from_query(self.parser[0])
+        self.tree.plot('test')
         return stmt
-
-    '''
-    WIP: Redo this using the SQLTreeNode
-    '''
-
-    def _to_tree(self, stmt):
-        tree = {}
-        for token in stmt.tokens:
-            if isinstance(token, sqlparse.sql.IdentifierList):
-                tree['select'] = [x for x in token.get_identifiers()]
-            elif isinstance(token, sqlparse.sql.Where):
-                tree['where'] = [x for x in token.tokens if (x.is_keyword
-                                                             and
-                                                             x.normalized !=
-                                                             'WHERE')or isinstance(x,
-                                                                                   sqlparse.sql.Comparison)
-                                 ]
-            elif token.is_keyword and token.normalized == 'FROM':
-                tree['from'] = stmt.token_next(stmt.token_index(token))[1]
-
-        return tree
-
-    '''
-    WIP: Redo this using the SQLTreeNode
-    '''
-
-    def _plot_graph(self, tree):
-        g = pydot.Dot(graph_type='graph')
-        projection = ', '.join(map(lambda x: x.get_name(), tree['select']))
-        selection = ' '.join(map(lambda x: x.value, tree['where']))
-
-        pNode = pydot.Node(projection, shape='none')
-        sNode = pydot.Node(selection, shape='none')
-
-        g.add_node(pNode)
-        g.add_node(sNode)
-
-        edge = pydot.Edge(pNode, sNode)
-        g.add_edge(edge)
-
-        for table in tree['from']:
-            edge = pydot.Edge(selection, table.value)
-            g.add_edge(edge)
-
-        g.write_png('output/test.png')
-        return tree
