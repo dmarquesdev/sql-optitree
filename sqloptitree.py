@@ -1,5 +1,6 @@
 import sqlparse
 import pydot
+import random
 
 PROJECTION = 'projection'
 SELECTION = 'selection'
@@ -10,17 +11,21 @@ PRODUCT_JOIN = 'product_join'
 VALID_KEYWORDS = ['SELECT', 'FROM', 'WHERE', 'JOIN']
 
 class SQLTreeNode(object):
-    def __init__(self, category, value=None):
+    def __init__(self, category, value=None, _id=None):
         self.category = category
         self.value = value
         self.parent = None
         self.children = []
+        self.id = _id
 
-    def plot(self, name):
+    def plot(self):
         g = pydot.Dot(graph_type='graph')
+        name = ''.join([random.choice('0123456789abcdef') for i in range(10)])
 
         SQLTreeNode.__to_pydot(g, self.get_root())
-        g.write_png('output/' + name + '.png')
+        g.write_png('static/output/' + name + '.png')
+
+        return name
 
     @staticmethod
     def __to_pydot(pydot_root, node, count=0):
@@ -78,6 +83,17 @@ class SQLTreeNode(object):
     def remove_child(self, node):
         self.children.remove(node)
 
+    def find(self, category):
+        found = None
+        for child in self.children:
+            if child.category == category:
+                found = child
+            else:
+                found = child.find(category)
+        
+        return found
+
+
     @staticmethod
     def from_query(query):
         root = SQLTreeNode(PROJECTION, query.tokens[2])
@@ -96,9 +112,10 @@ class SQLTreeNode(object):
         from_table = query.token_next(4)
         # Case 1: Regular Product
         if isinstance(from_table[1], sqlparse.sql.IdentifierList):
-            relation_a = SQLTreeNode(ENTITY, list(from_table[1].get_identifiers())[0])
+            first = list(from_table[1].get_identifiers())[0]
+            relation_a = SQLTreeNode(ENTITY, first, _id=first.get_alias())
             for identifier in list(from_table[1].get_identifiers())[1:]:
-                relation_b = SQLTreeNode(ENTITY, identifier)
+                relation_b = SQLTreeNode(ENTITY, identifier, _id=identifier.get_alias())
                 product = SQLTreeNode(PRODUCT)
                 product.add_children([relation_a, relation_b])
 
@@ -112,10 +129,12 @@ class SQLTreeNode(object):
             if next_token[1].is_keyword and next_token[1].normalized == 'JOIN':
                 join_token = next_token
 
-                relation_a = SQLTreeNode(ENTITY, query.token_next(join_token[0])[1])
+                value = query.token_next(join_token[0])[1]
+                relation_a = SQLTreeNode(ENTITY, value, _id=value.get_alias())
                 join_token = query.token_next(join_token[0] + 2)
                 while join_token[1]:
-                    relation_b = SQLTreeNode(ENTITY, query.token_next(join_token[0])[1])
+                    value = query.token_next(join_token[0])[1]
+                    relation_b = SQLTreeNode(ENTITY, value, _id=value.get_alias())
                     join = SQLTreeNode(PRODUCT_JOIN)
                     join.add_children([relation_a, relation_b])
 
@@ -229,5 +248,46 @@ class SQLQuery(object):
     def optimize(self):
         stmt = self.parser[0].tokens
         self.tree = SQLTreeNode.from_query(self.parser[0])
-        self.tree.plot('test')
-        return stmt
+        steps = []
+        self.do_optimization_steps(steps)
+
+        return steps
+
+    def do_optimization_steps(self, steps):
+        steps.append((0, self.tree.plot()))
+        self.step1()
+        steps.append((1, self.tree.plot()))
+        self.step2()
+        steps.append((2, self.tree.plot()))
+        self.step4()
+        steps.append((4, self.tree.plot()))
+        self.step5()
+        steps.append((5, self.tree.plot()))
+
+    # Break selection
+    def step1(self):
+        selection = self.tree.find(SELECTION)
+
+        # Lookup for OR operation
+        if any(token.is_keyword and token.normalized == 'OR' for token in selection.value.tokens):
+            return
+
+        pieces = filter(lambda t: isinstance(t, sqlparse.sql.Comparison), selection.value.tokens)
+        nodes = list(map(lambda p: SQLTreeNode(SELECTION, p), pieces))
+
+        for i in range(len(nodes) - 1):
+            nodes[i].add_child(nodes[i+1])
+
+        self.tree.add_child(nodes[0])
+        nodes[-1].add_children(selection.children)
+        self.tree.remove_child(selection)
+
+    def step2(self):
+        pass
+    
+    def step4(self):
+        pass
+    
+    def step5(self):
+        pass
+    

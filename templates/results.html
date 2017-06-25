@@ -8,7 +8,16 @@
   </head>
   <body>
     <div class="container">
-      {{ steps }}
+      {% for step in steps %}
+        <div class="panel">
+          <div class="panel-title">
+            <h3>Step {{ step[0] }}</h3>
+          </div>
+          <div class="panel-body">
+            <img src="/static/output/{{ step[1] }}.png" />
+          </div>
+        </div>
+      {% endfor %}
     </div>
   </body>
 </html>
