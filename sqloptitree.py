@@ -411,7 +411,33 @@ class SQLQuery(object):
         
     
     def step4(self):
-        pass
+        product_tree = self.tree.find(PRODUCT)
+        if (not product_tree or len(product_tree.children) == 0):
+            return
+
+        relation_a, relation_b = product_tree.children
+        product_parent = product_tree.parent
+
+        parent_aliases = [
+            token.normalized.split('.')
+            for token in product_parent.value.tokens
+            if isinstance(token,  sqlparse.sql.Identifier)
+        ]
+
+        is_natural_join = relation_a.value.get_alias() \
+            and relation_b.value.get_alias() \
+            and relation_a.value.get_alias() in parent_aliases[0] \
+            and relation_b.value.get_alias() in parent_aliases[1]
+
+        node = None
+        if is_natural_join:
+            node = SQLTreeNode(NATURAL_JOIN)
+        else:
+            return #TODO: case for inner join... node = NONE
+
+        product_parent.parent.add_child(node)
+        node.add_children(list(product_tree.children))
+        product_parent.parent.remove_child(product_parent)
     
     def step5(self):
         pass
