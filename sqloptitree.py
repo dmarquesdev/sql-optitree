@@ -6,7 +6,8 @@ PROJECTION = 'projection'
 SELECTION = 'selection'
 ENTITY = 'entity'
 PRODUCT = 'product'
-PRODUCT_JOIN = 'product_join'
+NATURAL_JOIN = 'natural_join'
+# INNER_JOIN = 'inner_join'
 
 VALID_KEYWORDS = ['SELECT', 'FROM', 'WHERE', 'JOIN']
 
@@ -62,7 +63,7 @@ class SQLTreeNode(object):
             return '\u03C3 ' + value
         elif node.category == PRODUCT:
             return '\u2A2F ' + str(count) + ' ' + value
-        elif node.category == PRODUCT_JOIN:
+        elif node.category == NATURAL_JOIN:
             return '\u2A1D ' + str(count) + ' ' + value
         else:
             return node.value.get_alias() if node.value.has_alias() else value
@@ -224,7 +225,7 @@ class SQLTreeNode(object):
                 while join_token[1]:
                     value = query.token_next(join_token[0])[1]
                     relation_b = SQLTreeNode(ENTITY, value, _id=value.get_alias())
-                    join = SQLTreeNode(PRODUCT_JOIN)
+                    join = SQLTreeNode(NATURAL_JOIN)
                     join.add_children([relation_a, relation_b])
 
                     relation_a = join
