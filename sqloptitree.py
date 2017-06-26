@@ -10,6 +10,8 @@ PRODUCT_JOIN = 'product_join'
 
 VALID_KEYWORDS = ['SELECT', 'FROM', 'WHERE', 'JOIN']
 
+MERGE = None
+
 class SQLTreeNode(object):
     def __init__(self, category, value=None, _id=None):
         self.category = category
@@ -18,6 +20,17 @@ class SQLTreeNode(object):
         self.children = []
         self.id = _id
 
+    def __str__(self):
+        return self.to_string()
+
+    def to_string(self, string='', tabs=''):
+        string += tabs + SQLTreeNode.__get_label(self, 0) + '\n'
+        tabs += '>'
+        for child in self.children:
+            string = child.to_string(string=string, tabs=tabs)
+
+        return string
+    
     def plot(self):
         g = pydot.Dot(graph_type='graph')
         name = ''.join([random.choice('0123456789abcdef') for i in range(10)])
@@ -54,6 +67,14 @@ class SQLTreeNode(object):
         else:
             return node.value.get_alias() if node.value.has_alias() else value
 
+    def to_list(self, flatten=[]):
+        flatten.append(self)
+        for child in self.children:
+            child.to_list(flatten)
+        
+        return flatten
+        
+
     @staticmethod
     def __get_shape(node):
         if node.category == ENTITY:
@@ -67,6 +88,21 @@ class SQLTreeNode(object):
             node = node.parent
 
         return node
+
+    def get_leafs(self, leafs=[]):
+        if(self.is_leaf() and self not in leafs):
+            leafs.append(self)
+        else:
+            for child in self.children:
+                child.get_leafs(leafs)
+        
+        return leafs
+
+    def is_root(self):
+        return self.parent == None
+
+    def is_leaf(self):
+        return len(self.children) == 0
     
     def add_child(self, node):
         if node.parent != None:
@@ -80,8 +116,32 @@ class SQLTreeNode(object):
         for node in nodes:
             self.add_child(node)
 
+    def add_before(self, node):
+        self.parent.remove_child(self)
+        node.parent.remove_child(node)
+
+        self.parent.children.append(node)
+        for child in node.children:
+            child.parent = node.parent
+            node.parent.children.append(child)
+
+        node.children = [self]
+
+        node.parent = self.parent
+        self.parent = node
+
     def remove_child(self, node):
         self.children.remove(node)
+
+    def has_child(self, child):
+        if child in self.children:
+            return True
+        else:
+            for my_child in self.children:
+                if my_child.has_child(child):
+                    return True
+        
+        return False
 
     def find(self, category):
         found = None
@@ -93,6 +153,35 @@ class SQLTreeNode(object):
         
         return found
 
+    def find_closest_parent(self, node_a, node_b):
+        parent = node_a.parent
+        while not parent.has_child(node_b) and parent != None:
+            parent = parent.parent
+
+        return parent
+
+    def get_entities(self):
+        tokens = self.value.tokens
+        entities = []
+        for token in tokens:
+            if isinstance(token, sqlparse.sql.Identifier):
+                entities.append(token.tokens[0].normalized)
+
+        return entities
+
+    def merge(self, node):
+        node.parent.remove_child(node)
+        for child in node.children:
+            child.parent = node.parent
+            node.parent.children.append(child)
+
+        if not isinstance(self.value, sqlparse.sql.TokenList):
+            self.value = sqlparse.sql.TokenList([self.value, MERGE, node.value])
+        else:
+            tokens = self.value.tokens
+            tokens.append(MERGE)
+            tokens = tokens + node.value.tokens
+            self.value = sqlparse.sql.TokenList(tokens)
 
     @staticmethod
     def from_query(query):
@@ -235,6 +324,7 @@ class SQLQuery(object):
         else:
             token = (None, None)
 
+        global MERGE
         while token[1]:
             token = where_token.token_next(token[0])
             if token[1]:
@@ -242,6 +332,9 @@ class SQLQuery(object):
                     return False
                 elif token[1].is_keyword and token[1].normalized not in where_valid_keywords:
                     return False
+                
+                if not MERGE and token[1].is_keyword and token[1].normalized == 'AND':
+                    MERGE = token[1]
 
         return True
 
@@ -283,7 +376,31 @@ class SQLQuery(object):
         self.tree.remove_child(selection)
 
     def step2(self):
-        pass
+        # Get tree as list
+        nodes = self.tree.to_list()
+        leafs = self.tree.get_leafs()
+
+        # Get all selections
+        selections = filter(lambda node: node.category == SELECTION, nodes)
+
+        for selection in selections:
+            # get all tables involved into that selection
+            entities = selection.get_entities()
+            
+            # a.name = 'John' or a.col1 = a.col2
+            if len(entities) == 1:
+                entity = list(filter(lambda node: node.id == entities[0], leafs))[0]
+            # a.name = b.name
+            elif len(entities) > 1:
+                entity = self.tree.find_closest_parent(entities[0], entities[1])
+
+            if entity.parent.category == SELECTION:
+                entity.parent.merge(selection)
+            else:
+                entity.add_before(selection)
+        
+        print(self.tree)
+        
     
     def step4(self):
         pass
