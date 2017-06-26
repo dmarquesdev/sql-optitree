@@ -240,7 +240,14 @@ class SQLQuery(object):
     def __init__(self, query):
         self.query = query
         self.parser = sqlparse.parse(query)
+        # cleaning whitespaces tokens
+        self.tokens = self._remove_whitespaces()
         self.tree = None
+
+    def _remove_whitespaces(self):
+        if not self.parser:
+            return []
+        return [token for token in self.parser[0].tokens if not token.is_whitespace]
 
     def is_valid(self):
         # Look for single statement
@@ -251,7 +258,7 @@ class SQLQuery(object):
         from_info = None
         join_idx = []
         where_token = None
-        for token in self.parser[0].tokens:
+        for token in self.tokens:
             if token.is_keyword:
                 if token.normalized not in VALID_KEYWORDS:
                     return False
@@ -296,11 +303,11 @@ class SQLQuery(object):
                 else:
                     alias_list.append(token.get_alias())
 
-        if isinstance(self.parser[0].tokens[2], sqlparse.sql.IdentifierList):
-            select_attrs = self.parser[0].tokens[2].tokens
+        if isinstance(self.tokens[1], sqlparse.sql.IdentifierList):
+            select_attrs = self.tokens[1].tokens
             select_identifiers = list(filter(identifier_filter, select_attrs))
-        elif isinstance(self.parser[0].tokens[2], sqlparse.sql.Identifier):
-            select_identifiers = [self.parser[0].tokens[2]]
+        elif isinstance(self.tokens[1], sqlparse.sql.Identifier):
+            select_identifiers = [self.tokens[1]]
 
 
         where_identifiers = []
@@ -339,7 +346,7 @@ class SQLQuery(object):
         return True
 
     def optimize(self):
-        stmt = self.parser[0].tokens
+        stmt = self.tokens
         self.tree = SQLTreeNode.from_query(self.parser[0])
         steps = []
         self.do_optimization_steps(steps)
