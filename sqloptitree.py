@@ -6,7 +6,8 @@ PROJECTION = 'projection'
 SELECTION = 'selection'
 ENTITY = 'entity'
 PRODUCT = 'product'
-PRODUCT_JOIN = 'product_join'
+NATURAL_JOIN = 'natural_join'
+# INNER_JOIN = 'inner_join'
 
 VALID_KEYWORDS = ['SELECT', 'FROM', 'WHERE', 'JOIN']
 
@@ -62,7 +63,7 @@ class SQLTreeNode(object):
             return '\u03C3 ' + value
         elif node.category == PRODUCT:
             return '\u2A2F ' + str(count) + ' ' + value
-        elif node.category == PRODUCT_JOIN:
+        elif node.category == NATURAL_JOIN:
             return '\u2A1D ' + str(count) + ' ' + value
         else:
             return node.value.get_alias() if node.value.has_alias() else value
@@ -224,7 +225,7 @@ class SQLTreeNode(object):
                 while join_token[1]:
                     value = query.token_next(join_token[0])[1]
                     relation_b = SQLTreeNode(ENTITY, value, _id=value.get_alias())
-                    join = SQLTreeNode(PRODUCT_JOIN)
+                    join = SQLTreeNode(NATURAL_JOIN)
                     join.add_children([relation_a, relation_b])
 
                     relation_a = join
@@ -240,7 +241,14 @@ class SQLQuery(object):
     def __init__(self, query):
         self.query = query
         self.parser = sqlparse.parse(query)
+        # cleaning whitespaces tokens
+        self.tokens = self._remove_whitespaces()
         self.tree = None
+
+    def _remove_whitespaces(self):
+        if not self.parser:
+            return []
+        return [token for token in self.parser[0].tokens if not token.is_whitespace]
 
     def is_valid(self):
         # Look for single statement
@@ -251,7 +259,7 @@ class SQLQuery(object):
         from_info = None
         join_idx = []
         where_token = None
-        for token in self.parser[0].tokens:
+        for token in self.tokens:
             if token.is_keyword:
                 if token.normalized not in VALID_KEYWORDS:
                     return False
@@ -296,11 +304,11 @@ class SQLQuery(object):
                 else:
                     alias_list.append(token.get_alias())
 
-        if isinstance(self.parser[0].tokens[2], sqlparse.sql.IdentifierList):
-            select_attrs = self.parser[0].tokens[2].tokens
+        if isinstance(self.tokens[1], sqlparse.sql.IdentifierList):
+            select_attrs = self.tokens[1].tokens
             select_identifiers = list(filter(identifier_filter, select_attrs))
-        elif isinstance(self.parser[0].tokens[2], sqlparse.sql.Identifier):
-            select_identifiers = [self.parser[0].tokens[2]]
+        elif isinstance(self.tokens[1], sqlparse.sql.Identifier):
+            select_identifiers = [self.tokens[1]]
 
 
         where_identifiers = []
@@ -339,7 +347,7 @@ class SQLQuery(object):
         return True
 
     def optimize(self):
-        stmt = self.parser[0].tokens
+        stmt = self.tokens
         self.tree = SQLTreeNode.from_query(self.parser[0])
         steps = []
         self.do_optimization_steps(steps)
@@ -403,7 +411,33 @@ class SQLQuery(object):
         
     
     def step4(self):
-        pass
+        product_tree = self.tree.find(PRODUCT)
+        if (not product_tree or len(product_tree.children) == 0):
+            return
+
+        relation_a, relation_b = product_tree.children
+        product_parent = product_tree.parent
+
+        parent_aliases = [
+            token.normalized.split('.')
+            for token in product_parent.value.tokens
+            if isinstance(token,  sqlparse.sql.Identifier)
+        ]
+
+        is_natural_join = relation_a.value.get_alias() \
+            and relation_b.value.get_alias() \
+            and relation_a.value.get_alias() in parent_aliases[0] \
+            and relation_b.value.get_alias() in parent_aliases[1]
+
+        node = None
+        if is_natural_join:
+            node = SQLTreeNode(NATURAL_JOIN)
+        else:
+            return #TODO: case for inner join... node = NONE
+
+        product_parent.parent.add_child(node)
+        node.add_children(list(product_tree.children))
+        product_parent.parent.remove_child(product_parent)
     
     def step5(self):
         pass
