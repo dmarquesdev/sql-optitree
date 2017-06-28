@@ -221,12 +221,17 @@ class SQLTreeNode(object):
     @staticmethod
     def from_query(query):
         root = SQLTreeNode(PROJECTION, query.tokens[2])
-        where = SQLTreeNode(SELECTION, ChainedSelection.from_where(query.tokens[-1]))
+        where = None
+        if isinstance(query.tokens[-1], sqlparse.sql.Where):
+            where = SQLTreeNode(SELECTION, ChainedSelection.from_where(query.tokens[-1]))
 
         tables = SQLTreeNode.__parse_products(query)
 
-        root.add_child(where)
-        where.add_child(tables)
+        if where:
+            root.add_child(where)
+            where.add_child(tables)
+        else:
+            root.add_child(tables)
 
         return root
 
@@ -250,13 +255,20 @@ class SQLTreeNode(object):
             next_token = query.token_next(from_table[0])
 
             # Case 2: Join
-            if next_token[1].is_keyword and next_token[1].normalized == 'JOIN':
+            if next_token[1] and \
+                next_token[1].is_keyword and next_token[1].normalized == 'JOIN':
                 join_token = next_token
 
                 value = query.token_next(join_token[0])[1]
                 relation_a = SQLTreeNode(ENTITY, value, _id=value.get_alias())
+                join = SQLTreeNode(NATURAL_JOIN)
+                join.add_children([SQLTreeNode(ENTITY, from_table[1], _id=from_table[1].get_alias()), \
+                    relation_a])
+
+                relation_a = join
+
                 join_token = query.token_next(join_token[0] + 2)
-                while join_token[1]:
+                while join_token[1] and not isinstance(join_token[1], sqlparse.sql.Where):
                     value = query.token_next(join_token[0])[1]
                     relation_b = SQLTreeNode(ENTITY, value, _id=value.get_alias())
                     join = SQLTreeNode(NATURAL_JOIN)
@@ -305,6 +317,8 @@ class SQLQuery(object):
             elif isinstance(token, sqlparse.sql.Where):
                 keywords.append(token)
                 where_token = token
+            elif token.normalized == '*':
+                return False
 
         # Look for SELECT/FROM(/WHERE) structure
         if len(keywords) < 2:
@@ -393,12 +407,13 @@ class SQLQuery(object):
         steps.append((2, self.tree.plot()))
         self.step4()
         steps.append((4, self.tree.plot()))
-        self.step5()
-        steps.append((5, self.tree.plot()))
 
     # Break selection
     def step1(self):
         selection = self.tree.find(SELECTION)
+
+        if not selection:
+            return
 
         nodes = selection.value.to_list()
 
@@ -415,7 +430,10 @@ class SQLQuery(object):
         leafs = self.tree.get_leafs()
 
         # Get all selections
-        selections = filter(lambda node: node.category == SELECTION, nodes)
+        selections = list(filter(lambda node: node.category == SELECTION, nodes))
+
+        if not selections:
+            return
 
         for selection in selections:
             # get all tables involved into that selection
@@ -465,5 +483,6 @@ class SQLQuery(object):
         product_parent.parent.remove_child(product_parent)
     
     def step5(self):
+        # TODO someday...
         pass
     
