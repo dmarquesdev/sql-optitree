@@ -11,7 +11,38 @@ NATURAL_JOIN = 'natural_join'
 
 VALID_KEYWORDS = ['SELECT', 'FROM', 'WHERE', 'JOIN']
 
-MERGE = None
+class PrintableWhere(sqlparse.sql.Where):
+    def __str__(self):
+        return super.__str__()[6:]
+
+class ChainedSelection(object):
+    def __init__(self, parts):
+        self.parts = parts if isinstance(parts, list) else [parts]
+        self.tokens = parts
+
+    def __str__(self):
+        return ' AND '.join([str(val) for val in self.parts])
+
+    def to_list(self):
+        return self.parts
+
+    def append(self, value):
+        self.parts.append(value)
+
+    def get_alias(self):
+        return None
+
+    @staticmethod
+    def from_where(where):
+        # Lookup for OR operation
+        if any(token.is_keyword and token.normalized == 'OR' for token in where.tokens):
+            return PrintableWhere(where)
+
+        pieces = filter(lambda t: isinstance(t, sqlparse.sql.Comparison), where.tokens)
+        nodes = list(map(lambda p: SQLTreeNode(SELECTION, p), pieces))
+
+        return ChainedSelection(nodes)
+
 
 class SQLTreeNode(object):
     def __init__(self, category, value=None, _id=None):
@@ -68,7 +99,10 @@ class SQLTreeNode(object):
         else:
             return node.value.get_alias() if node.value.has_alias() else value
 
-    def to_list(self, flatten=[]):
+    def to_list(self, flatten=None):
+        if not flatten:
+            flatten = []
+
         flatten.append(self)
         for child in self.children:
             child.to_list(flatten)
@@ -90,7 +124,10 @@ class SQLTreeNode(object):
 
         return node
 
-    def get_leafs(self, leafs=[]):
+    def get_leafs(self, leafs=None):
+        if leafs == None:
+            leafs = []
+
         if(self.is_leaf() and self not in leafs):
             leafs.append(self)
         else:
@@ -175,19 +212,16 @@ class SQLTreeNode(object):
         for child in node.children:
             child.parent = node.parent
             node.parent.children.append(child)
-
-        if not isinstance(self.value, sqlparse.sql.TokenList):
-            self.value = sqlparse.sql.TokenList([self.value, MERGE, node.value])
+        
+        if isinstance(self.value, ChainedSelection):
+            self.value.append(node.value)
         else:
-            tokens = self.value.tokens
-            tokens.append(MERGE)
-            tokens = tokens + node.value.tokens
-            self.value = sqlparse.sql.TokenList(tokens)
+            self.value = ChainedSelection([self.value, node.value])
 
     @staticmethod
     def from_query(query):
         root = SQLTreeNode(PROJECTION, query.tokens[2])
-        where = SQLTreeNode(SELECTION, query.tokens[-1])
+        where = SQLTreeNode(SELECTION, ChainedSelection.from_where(query.tokens[-1]))
 
         tables = SQLTreeNode.__parse_products(query)
 
@@ -332,7 +366,6 @@ class SQLQuery(object):
         else:
             token = (None, None)
 
-        global MERGE
         while token[1]:
             token = where_token.token_next(token[0])
             if token[1]:
@@ -341,14 +374,12 @@ class SQLQuery(object):
                 elif token[1].is_keyword and token[1].normalized not in where_valid_keywords:
                     return False
                 
-                if not MERGE and token[1].is_keyword and token[1].normalized == 'AND':
-                    MERGE = token[1]
-
         return True
 
     def optimize(self):
         stmt = self.tokens
         self.tree = SQLTreeNode.from_query(self.parser[0])
+        li = self.tree.to_list()
         steps = []
         self.do_optimization_steps(steps)
 
@@ -369,12 +400,7 @@ class SQLQuery(object):
     def step1(self):
         selection = self.tree.find(SELECTION)
 
-        # Lookup for OR operation
-        if any(token.is_keyword and token.normalized == 'OR' for token in selection.value.tokens):
-            return
-
-        pieces = filter(lambda t: isinstance(t, sqlparse.sql.Comparison), selection.value.tokens)
-        nodes = list(map(lambda p: SQLTreeNode(SELECTION, p), pieces))
+        nodes = selection.value.to_list()
 
         for i in range(len(nodes) - 1):
             nodes[i].add_child(nodes[i+1])
@@ -400,14 +426,13 @@ class SQLQuery(object):
                 entity = list(filter(lambda node: node.id == entities[0], leafs))[0]
             # a.name = b.name
             elif len(entities) > 1:
-                entity = self.tree.find_closest_parent(entities[0], entities[1])
+                entities_nodes = list(filter(lambda node: node.id in entities, leafs))
+                entity = self.tree.find_closest_parent(entities_nodes[0], entities_nodes[1])
 
-            if entity.parent.category == SELECTION:
+            if entity.parent.category == SELECTION and entity.parent != selection:
                 entity.parent.merge(selection)
             else:
                 entity.add_before(selection)
-        
-        print(self.tree)
         
     
     def step4(self):

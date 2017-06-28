@@ -17,7 +17,7 @@
       <p>This app works with a very restrict subset of the SQL Language. The following syntax is valid:</p>
       <div class="panel">
         <div class="panel-body">
-          <p>SELECT ... FROM ... (JOIN ... (ON ...)?)* (WHERE ...)*</p>
+          <p>SELECT ... FROM ... (JOIN ...)* (WHERE ...)*</p>
           <p>The following rules are applied:</p>
           <ul>
             <li>If you do any type of product (like join), you MUST use alias!</li>
@@ -31,7 +31,7 @@
         <div class="row">
           <div class="col-xs-12">
             <div class="form-group">
-              <textarea name="sql" class="form-control" rows="15">SELECT a.id, a.name, b.id, b.job, c.id, c.project FROM tableA a, tableB b, tableC c WHERE a.name = 'John Doe' AND b.job = 'DBA' AND b.id = 10050</textarea>
+              <textarea name="sql" class="form-control" rows="15">SELECT p.codp, p.nome, c.data FROM Paciente p, Consulta c WHERE p.doenca = 'Cancer' AND c.codp = p.codp</textarea>
             </div>
           </div>
         </div>
