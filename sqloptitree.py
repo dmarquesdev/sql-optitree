@@ -454,33 +454,35 @@ class SQLQuery(object):
         
     
     def step4(self):
-        product_tree = self.tree.find(PRODUCT)
-        if (not product_tree or len(product_tree.children) == 0):
+        nodes = self.tree.to_list()
+        leafs = self.tree.get_leafs()
+
+        products = [p for p in nodes if p.category == PRODUCT]
+
+        if not products:
             return
 
-        relation_a, relation_b = product_tree.children
-        product_parent = product_tree.parent
+        for product in products:
+            # get all tables involved into that selection as (id, entity)
+            entities = [e for e in product.to_list() if e.category == ENTITY]
+            entities_ids = [e.id for e in entities]
 
-        parent_aliases = [
-            token.normalized.split('.')
-            for token in product_parent.value.tokens
-            if isinstance(token,  sqlparse.sql.Identifier)
-        ]
+            product_parent = product.parent
+            parent_aliases = [
+                token.normalized.split('.')[0]
+                for token in product_parent.value.tokens
+                if isinstance(token,  sqlparse.sql.Identifier)
+            ]
 
-        is_natural_join = relation_a.value.get_alias() \
-            and relation_b.value.get_alias() \
-            and relation_a.value.get_alias() in parent_aliases[0] \
-            and relation_b.value.get_alias() in parent_aliases[1]
+            is_natural_join = all(x in entities_ids for x in parent_aliases)
 
-        node = None
-        if is_natural_join:
+            if not is_natural_join:
+                return #TODO: case for inner join... node = NONE
+            
             node = SQLTreeNode(NATURAL_JOIN)
-        else:
-            return #TODO: case for inner join... node = NONE
-
-        product_parent.parent.add_child(node)
-        node.add_children(list(product_tree.children))
-        product_parent.parent.remove_child(product_parent)
+            product_parent.parent.add_child(node)
+            node.add_children(product.children)
+            product_parent.parent.remove_child(product_parent)
     
     def step5(self):
         # TODO someday...
